@@ -6,18 +6,21 @@ import torch.optim as optim
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
-from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, f1_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, f1_score, precision_score, recall_score, roc_curve, auc
 from torch.utils.data import DataLoader, TensorDataset
 
 # 하이퍼파라미터 설정
 epochs = 10
 embedding_size = 64
-data_used = 10000
+data_used = 100000
 
 # 데이터 로드 및 전처리
 users = pd.read_csv('.\\data\\Users.csv').head(data_used)
 books = pd.read_csv('.\\data\\Books.csv', dtype={'Year-Of-Publication': str}).head(data_used)
 ratings = pd.read_csv('.\\data\\Ratings.csv').head(data_used)
+
+# 평점이 0인 데이터를 제외
+# ratings = ratings[ratings['Book-Rating'] != 0]
 
 # 사용자 및 책 ID를 인덱스로 매핑
 user_ids = ratings['User-ID'].unique().tolist()
@@ -33,7 +36,7 @@ ratings['book'] = ratings['ISBN'].map(book_to_index)
 user_book_matrix = ratings.pivot_table(index='user', columns='book', values='Book-Rating')
 
 # NaN 값을 0으로 대체 (또는 다른 방법으로 처리 가능)
-user_book_matrix = user_book_matrix.fillna(0)
+user_book_matrix = user_book_matrix.fillna(-1)
 
 # 데이터셋 분할
 X = ratings[['user', 'book']].values
@@ -87,6 +90,8 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 # 모델 학습
 train_losses = []
 test_losses = []
+accuracies = []
+rmses = []
 
 for epoch in range(epochs):
     model.train()
@@ -96,7 +101,7 @@ for epoch in range(epochs):
     
     for batch_users, batch_books, batch_ratings in train_loader:
         optimizer.zero_grad()
-        predictions = model(batch_users, batch_books).squeeze()
+        predictions = model(batch_users, batch_books).squeeze()  # (batch_size, 1) -> (batch_size,)
         loss = criterion(predictions, batch_ratings)
         loss.backward()
         optimizer.step()
@@ -117,9 +122,60 @@ for epoch in range(epochs):
     accuracy = accuracy_score(binary_targets, binary_predictions)
     f1 = f1_score(binary_targets, binary_predictions)
     
- # Calculate RMSE, MAE, and correlation
+    # Calculate RMSE, MAE, and correlation
     rmse = np.sqrt(mean_squared_error(all_targets, all_predictions))
     mae = mean_absolute_error(all_targets, all_predictions)
-    correlation = np.corrcoef(all_targets, all_predictions)[0, 1]
     
-    print(f'Epoch {epoch+1}/{epochs}, Loss: {epoch_loss / len(train_loader):.4f}, Accuracy: {accuracy:.4f}, F1 Score: {f1:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}, Correlation: {correlation:.4f}')
+    accuracies.append(accuracy)
+    rmses.append(rmse)
+    
+    print(f'Epoch {epoch+1}/{epochs}, Loss: {epoch_loss / len(train_loader):.4f}, Accuracy: {accuracy:.4f}, F1 Score: {f1:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}')
+
+# 시각화
+plt.figure(figsize=(12, 5))
+
+# Accuracy plot
+plt.subplot(1, 2, 1)
+plt.plot(range(1, epochs + 1), accuracies, marker='o', label='Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.title('Accuracy over Epochs')
+plt.legend()
+
+# RMSE plot
+plt.subplot(1, 2, 2)
+plt.plot(range(1, epochs + 1), rmses, marker='o', label='RMSE')
+plt.xlabel('Epoch')
+plt.ylabel('RMSE')
+plt.title('RMSE over Epochs')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# Precision, Recall, F1 Score
+precision = precision_score(binary_targets, binary_predictions)
+recall = recall_score(binary_targets, binary_predictions)
+print(f'Precision: {precision:.4f}, Recall: {recall:.4f}, F1 Score: {f1:.4f}')
+
+# ROC Curve and AUC
+fpr, tpr, _ = roc_curve(binary_targets, all_predictions)
+roc_auc = auc(fpr, tpr)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='red', linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.0])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC) Curve')
+plt.legend(loc="lower right")
+plt.show()
+
+# 하이퍼파라미터 출력
+print(f'Hyperparameters:')
+print(f'  Epochs: {epochs}')
+print(f'  Embedding Size: {embedding_size}')
+print(f'  Data Used: {data_used}')
+print(f'  Learning Rate: {optimizer.param_groups[0]["lr"]}')
