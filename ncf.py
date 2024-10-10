@@ -9,20 +9,17 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, f1_score, precision_score, recall_score, roc_curve, auc
 from torch.utils.data import DataLoader, TensorDataset
 
-# 하이퍼파라미터 설정
+# hyperparameters
 epochs = 10
 embedding_size = 64
-data_used = 100000
+data_used = 10000
 
-# 데이터 로드 및 전처리
+# data loading and preprocessing
 users = pd.read_csv('.\\data\\Users.csv').head(data_used)
 books = pd.read_csv('.\\data\\Books.csv', dtype={'Year-Of-Publication': str}).head(data_used)
 ratings = pd.read_csv('.\\data\\Ratings.csv').head(data_used)
 
-# 평점이 0인 데이터를 제외
-# ratings = ratings[ratings['Book-Rating'] != 0]
 
-# 사용자 및 책 ID를 인덱스로 매핑
 user_ids = ratings['User-ID'].unique().tolist()
 book_isbns = ratings['ISBN'].unique().tolist()
 
@@ -32,17 +29,17 @@ book_to_index = {isbn: idx for idx, isbn in enumerate(book_isbns)}
 ratings['user'] = ratings['User-ID'].map(user_to_index)
 ratings['book'] = ratings['ISBN'].map(book_to_index)
 
-# 사용자-책 상호작용 행렬 생성 (평점이 없으면 NaN)
+# user-book interaction matrix
 user_book_matrix = ratings.pivot_table(index='user', columns='book', values='Book-Rating')
 
-# NaN 값을 0으로 대체 (또는 다른 방법으로 처리 가능)
+# Nan values are replaced with -1
 user_book_matrix = user_book_matrix.fillna(-1)
 
-# 데이터셋 분할
+# data split
 X = ratings[['user', 'book']].values
 y = ratings['Book-Rating'].values
 
-# MinMaxScaler를 사용하여 y를 0과 1 사이로 스케일링
+# MinMaxScaler is used to scale y between 0 and 1
 scaler = MinMaxScaler()
 y = scaler.fit_transform(y.reshape(-1, 1)).flatten()
 
@@ -56,11 +53,11 @@ test_users = torch.LongTensor(X_test[:, 0])
 test_books = torch.LongTensor(X_test[:, 1])
 test_ratings = torch.FloatTensor(y_test)
 
-# DataLoader 생성
+# DataLoader 
 train_dataset = TensorDataset(train_users, train_books, train_ratings)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-# 모델 정의
+# model definition
 class NCF(nn.Module):
     def __init__(self, num_users, num_books, embedding_size):
         super(NCF, self).__init__()
@@ -80,14 +77,14 @@ class NCF(nn.Module):
         x = self.sigmoid(self.fc3(x))
         return x
 
-# 모델 초기화
+# model initialization
 num_users = len(user_ids)
 num_books = len(book_isbns)
 model = NCF(num_users, num_books, embedding_size)
 criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# 모델 학습
+# train the model
 train_losses = []
 test_losses = []
 accuracies = []
@@ -131,23 +128,15 @@ for epoch in range(epochs):
     
     print(f'Epoch {epoch+1}/{epochs}, Loss: {epoch_loss / len(train_loader):.4f}, Accuracy: {accuracy:.4f}, F1 Score: {f1:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}')
 
-# 시각화
-plt.figure(figsize=(12, 5))
+# visualize metrics
+plt.figure(figsize=(6, 5))
 
 # Accuracy plot
-plt.subplot(1, 2, 1)
+# plt.subplot(1, 2, 1)
 plt.plot(range(1, epochs + 1), accuracies, marker='o', label='Accuracy')
 plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
 plt.title('Accuracy over Epochs')
-plt.legend()
-
-# RMSE plot
-plt.subplot(1, 2, 2)
-plt.plot(range(1, epochs + 1), rmses, marker='o', label='RMSE')
-plt.xlabel('Epoch')
-plt.ylabel('RMSE')
-plt.title('RMSE over Epochs')
 plt.legend()
 
 plt.tight_layout()
@@ -173,7 +162,6 @@ plt.title('Receiver Operating Characteristic (ROC) Curve')
 plt.legend(loc="lower right")
 plt.show()
 
-# 하이퍼파라미터 출력
 print(f'Hyperparameters:')
 print(f'  Epochs: {epochs}')
 print(f'  Embedding Size: {embedding_size}')
